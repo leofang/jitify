@@ -109,12 +109,12 @@
 #include <mutex>
 #endif
 
-#include <cuda.h>
-#include <cuda_runtime_api.h>  // For dim3, cudaStream_t
+//#include <cuda.h>
+//#include <cuda_runtime_api.h>  // For dim3, cudaStream_t
 #if CUDA_VERSION >= 8000
 #define NVRTC_GET_TYPE_NAME 1
 #endif
-#include <nvrtc.h>
+//#include <nvrtc.h>
 
 // For use by get_current_executable_path().
 #ifdef __linux__
@@ -443,34 +443,56 @@ inline bool extract_include_info_from_compile_error(std::string log,
                                                     std::string& name,
                                                     std::string& parent,
                                                     int& line_num) {
-  static const std::vector<std::string> pattern = {
-      "could not open source file \"", "cannot open source file \""};
+   // for CUDA, the error log is like this:
+   //
+   // ../iterator/cache_modified_input_iterator.cuh(40): catastrophic error: cannot open source file "../thread/thread_store.cuh"
+   // 
+   // 1 catastrophic error detected in the compilation of "/tmp/tmp9aniz6vv/931a22bb59f17a1d93c68fca20053260_2.cubin.cu".
+   // Compilation terminated.
+   //
+   //
+   // for HIP, the error log is like this:
+   //
+   // /tmp/comgr-05affc/input/CompileSource:2:10: fatal error: 'cupy/complex.cuh' file not found
+   // #include <cupy/complex.cuh>
+   //          ^~~~~~~~~~~~~~~~~~
+   // 1 error generated when compiling for gfx906.
+   // Error: Failed to compile opencl source (from CL or HIP source to LLVM IR).
+   //
 
-  for (auto& p : pattern) {
-    size_t beg = log.find(p);
-    if (beg != std::string::npos) {
-      beg += p.size();
-      size_t end = log.find("\"", beg);
-      name = log.substr(beg, end - beg);
-
-      size_t line_beg = log.rfind("\n", beg);
-      if (line_beg == std::string::npos) {
-        line_beg = 0;
-      } else {
-        line_beg += 1;
-      }
-
-      size_t split = log.find("(", line_beg);
-      parent = log.substr(line_beg, split - line_beg);
-      line_num =
-          atoi(log.substr(split + 1, log.find(")", split + 1) - (split + 1))
-                   .c_str());
-
-      return true;
-    }
-  }
-
-  return false;
+   std::cout << "\n\n\n\n my log is: " << log << "\n\n\n\n";
+   static const std::vector<std::string> pattern = {
+       "fatal error: \'", };
+ 
+   for (auto& p : pattern) {
+     size_t beg = log.find(p);
+     if (beg != std::string::npos) {
+       beg += p.size();
+       size_t end = log.find("\'", beg);
+       name = log.substr(beg, end - beg);
+ 
+       size_t line_beg = log.rfind("\n", beg);
+       if (line_beg == std::string::npos) {
+         line_beg = 0;
+       } else {
+         line_beg += 1;
+       }
+ 
+       size_t split = log.find(":", line_beg);
+       parent = log.substr(line_beg, split - line_beg);
+       split = log.find(":", split + 1);
+       line_num =
+           atoi(log.substr(split + 1, log.find(":", split + 1) - (split + 1))
+                    .c_str());
+       std::cout << "got name: " << name << std::endl;
+       std::cout << "got parent: " << parent << std::endl;
+       std::cout << "got line num: " << line_num << std::endl;
+ 
+       return true;
+     }
+   }
+ 
+   return false;
 }
 
 inline bool is_include_directive_with_quotes(const std::string& source,
